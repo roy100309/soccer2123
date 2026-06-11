@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Babylon.js 11v11 Hardcore Tactical Soccer</title>
+  <title>Babylon.js 11v11 Hardcore Tactical Soccer - Maximum AI Version</title>
   <style>
     html, body {
       overflow: hidden;
@@ -24,12 +24,13 @@
       left: 20px;
       color: white;
       font-family: 'Malgun Gothic', sans-serif;
-      background: rgba(0, 0, 0, 0.6);
+      background: rgba(0, 0, 0, 0.75);
       padding: 15px 20px;
       border-radius: 10px;
       pointer-events: none;
       line-height: 1.6;
       z-index: 10;
+      border: 1px solid #ff4444;
     }
     #scoreboard {
       position: absolute;
@@ -86,18 +87,20 @@
       from { transform: translate(-50%, -50%) scale(0.95); }
       to { transform: translate(-50%, -50%) scale(1.05); }
     }
-    .highlight { color: #ffeb3b; font-weight: bold; }
+    .highlight { color: #ff3333; font-weight: bold; }
+    .system-ready { color: #4caf50; font-weight: bold; }
   </style>
   <script src="https://cdn.babylonjs.com/babylon.js"></script>
 </head>
 <body>
 
   <div id="ui-container">
-    ⚔️ <b>전술 매치 시스템 고도화 (v2.7 - 수비 대형 & 충돌 보정 버전)</b><br>
-    • 수비 지능: <span class="highlight">대형 유지 시스템</span> 도입 (무작정 공으로 밀집되지 않음)<br>
-    • 상호 충돌: 수비수끼리 몸을 통과하지 못하고 <span class="highlight">서로 밀어내도록 물리 차단</span><br>
-    • 이동: 화살표 키 / E (대시) / D (D슛 게이지 충전)<br>
-    • 수비: 상대 공 소유 시 가까이 가서 Spacebar로 뺏기
+    🔥 <b>하드코어 전술 매치 시스템 (v3.0 - 최상위 전술 AI 엔진)</b><br>
+    • AI 지능 레벨: <span class="highlight">MAXIMUM (프로 등급 이상)</span><br>
+    • 공간 예측: 유저의 이동 가속도를 파악하여 길목을 사전 차단<br>
+    • 협력 수비: 1선 압박조와 2선 백업조가 유기적으로 역할을 스위칭<br>
+    • 조작: 화살표 키 / E (대시) / D (D슛 게이지 충전 / 박스 안 자동 조준)<br>
+    • 수비: 상대 공 소유 시 가까이 접근하여 <span class="system-ready">Spacebar</span> 연타로 뺏기
     <div id="power-bar-container">
       <div id="power-bar"></div>
     </div>
@@ -183,7 +186,7 @@
       }
 
       resetPosition() {
-        this.mesh.position.set(0, 0, -35); 
+        this.mesh.position.set(0, 0, -55); 
         this.moveDirection.set(0, 0, 1); 
         this.mesh.rotation.y = 0;
         this.currentSpeed = this.minSpeed;
@@ -242,19 +245,21 @@
     }
 
     // ==========================================
-    // 2. DummyPlayer 클래스 (수비 대형 보정 기능 탑재)
+    // 2. DummyPlayer 클래스 (최상위 MAXIMUM AI)
     // ==========================================
     class DummyPlayer {
       constructor(name, team, role, position, scene) {
         this.name = name;
         this.team = team;
         this.role = role; 
-        this.initialPos = position.clone(); // 자신의 원래 전술 대형 위치 보존
+        this.initialPos = position.clone(); 
         this.targetPos = position.clone();
         this.scene = scene;
-        this.baseSpeed = 0.11;
-        this.dashSpeed = 0.23; 
-        this.gkSpeed = 0.16; 
+        
+        // AI 물리 기동 능력 극대화 업그레이드
+        this.baseSpeed = 0.15;
+        this.dashSpeed = 0.32; 
+        this.gkSpeed = 0.24; 
         this.hasBall = false;
         this.createMesh();
       }
@@ -290,31 +295,33 @@
         this.mesh.rotation.y = (this.team === "home") ? 0 : Math.PI;
       }
 
-      updateAI(playerObj, ball, fieldHeight, onTackleSuccess) {
+      updateAI(playerObj, ball, fieldHeight, isClosestDefender, onTackleSuccess) {
         const playerPos = playerObj.mesh.position;
         if (this.role === "GK") {
           this.updateGKLogic(playerPos, ball, fieldHeight, onTackleSuccess);
         } else {
-          this.updateDefenderLogic(playerObj, ball, onTackleSuccess);
+          this.updateDefenderLogic(playerObj, ball, isClosestDefender, onTackleSuccess);
         }
       }
 
+      // [골키퍼 AI 극대화]: 박스 안으로 진입 시 무섭게 전진 압박 및 볼 탈취 각도 차단
       updateGKLogic(playerPos, ball, fieldHeight, onTackleSuccess) {
         const ballPos = ball.position;
         const isAwayGK = (this.team === "away");
         
-        const boxMinX = -PENALTY_BOX_W / 2 + 2.0;
-        const boxMaxX = PENALTY_BOX_W / 2 - 2.0;
+        const boxMinX = -PENALTY_BOX_W / 2 + 1.0;
+        const boxMaxX = PENALTY_BOX_W / 2 - 1.0;
         const boxZCenter = isAwayGK ? (fieldHeight / 2) : -(fieldHeight / 2);
         
         const boxMinZ = isAwayGK ? (fieldHeight / 2 - PENALTY_BOX_D) : -(fieldHeight / 2);
         const boxMaxZ = isAwayGK ? (fieldHeight / 2) : -(fieldHeight / 2 + PENALTY_BOX_D);
 
         let targetX = ballPos.x;
-        let targetZ = isAwayGK ? (boxZCenter - 5.0) : (boxZCenter + 5.0);
+        let targetZ = isAwayGK ? (boxZCenter - 4.0) : (boxZCenter + 4.0);
 
-        const triggerDist = isAwayGK ? (ballPos.z > boxMinZ) : (ballPos.z < boxMaxZ);
-        if (triggerDist) {
+        // 유저나 공이 페널티 박스 안에 들어오면 골키퍼가 직접 공을 소유하러 맹렬히 돌진
+        const isInBox = isAwayGK ? (ballPos.z > boxMinZ) : (ballPos.z < boxMaxZ);
+        if (isInBox) {
           targetX = ballPos.x;
           targetZ = ballPos.z;
         }
@@ -327,12 +334,14 @@
         }
 
         const moveVec = this.targetPos.subtract(this.mesh.position);
+        let currentGkSpeed = isInBox ? this.dashSpeed : this.gkSpeed;
+
         if (moveVec.length() > 0.1) {
           moveVec.normalize();
-          this.mesh.position.addInPlace(moveVec.scale(this.gkSpeed));
+          this.mesh.position.addInPlace(moveVec.scale(currentGkSpeed));
           this.mesh.rotation.y = Math.atan2(moveVec.x, moveVec.z);
           
-          const time = performance.now() * 0.015;
+          const time = performance.now() * 0.02;
           this.leftLeg.rotation.x = Math.sin(time) * 0.5; this.rightLeg.rotation.x = -Math.sin(time) * 0.5;
         } else {
           this.leftLeg.rotation.x = 0; this.rightLeg.rotation.x = 0;
@@ -340,52 +349,61 @@
           this.mesh.rotation.y = Math.atan2(lookVec.x, lookVec.z);
         }
 
+        // 골키퍼 수비 리치 및 가로채기 확률 대폭 상승
         const distToBall = Vector3.Distance(this.mesh.position, ballPos);
-        if (distToBall < 3.5) {
-          if (Math.random() < 0.20) {
-            this.mesh.position.addInPlace(ballPos.subtract(this.mesh.position).normalize().scale(1.2));
+        if (distToBall < 4.2) {
+          if (Math.random() < 0.45) {
+            this.mesh.position.addInPlace(ballPos.subtract(this.mesh.position).normalize().scale(1.5));
             onTackleSuccess(this);
           }
         }
       }
 
-      updateDefenderLogic(playerObj, ball, onTackleSuccess) {
-        if (this.team === "home") return; // 원정팀(AI 수비진) 중심 보정
+      // [필드 플레이어 AI 극대화]: 공간 예측, 협력 수비 대형 스위칭 연산
+      updateDefenderLogic(playerObj, ball, isClosestDefender, onTackleSuccess) {
+        if (this.team === "home") return; // 원정팀(AI) 하드코어 보정 적용
 
         const playerPos = playerObj.mesh.position;
         const ballPos = ball.position;
         const distToPlayer = Vector3.Distance(this.mesh.position, playerPos);
-        const distToBall = Vector3.Distance(this.mesh.position, ballPos);
         
         let currentMoveSpeed = this.baseSpeed;
 
+        // 역습 모드: 공을 가졌다면 유저 진영으로 무섭게 패고 전진
         if (this.hasBall) {
           this.mesh.rotation.y = Math.PI; 
-          this.mesh.position.z -= this.baseSpeed;
+          this.mesh.position.z -= this.dashSpeed;
           
-          const time = performance.now() * 0.015;
+          const time = performance.now() * 0.025;
           this.leftLeg.rotation.x = Math.sin(time) * 0.5; this.rightLeg.rotation.x = -Math.sin(time) * 0.5;
           return;
         }
 
-        // [대형 유지 핵심 조건] 
-        // 유저가 일정 수비선(Z축 -20 이상)을 넘어 다가오거나 수비수 사정거리(28칸)안에 있을 때만 압박 가동
-        // 그 외엔 무작정 공을 쫓아가지 않고 자기 전술 대형 위치(initialPos)로 철저히 복귀
-        if (playerPos.z > -20 && distToPlayer < 28.0) {
+        // 압박 조건 최적화 및 고도화
+        // 1순위 압박수비수이거나 유저가 하프라인근처(-10) 이상 올라오면 팀 전체가 유기적으로 라인을 올림
+        if (isClosestDefender || (playerPos.z > -15 && distToPlayer < 45.0)) {
           currentMoveSpeed = this.dashSpeed; 
           
-          // 전원이 유저 한 명에게 바짝 붙으면 뭉치므로 약간의 간격 가중치 및 예측 경로 배치
-          const interceptOffset = playerObj.moveDirection.scale(2.5);
-          this.targetPos.copyFrom(playerPos.add(interceptOffset)); 
+          if (isClosestDefender) {
+            // [예측 길목 차단]: 유저의 현재 이동 방향 가속도 벡터를 계산해 예측 지점으로 미리 이동함
+            const leadTime = distToPlayer * 0.08;
+            const interceptOffset = playerObj.moveDirection.scale(playerObj.currentSpeed * leadTime * 12);
+            this.targetPos.copyFrom(playerPos.add(interceptOffset));
+          } else {
+            // 협력 백업조: 1선 수비수 살짝 뒤쪽 측면 커버 포지셔닝 형성하여 도주로 차단
+            const backUpOffset = new Vector3(this.initialPos.x * 0.3, 0, -3.0);
+            this.targetPos.copyFrom(playerPos.add(backUpOffset));
+          }
         } else {
-          // 전술 대형으로 복귀 시에는 기본 속도로 안정적으로 이동
+          // 안정적인 컴팩트 수비 대형(스마트 복귀)
           currentMoveSpeed = this.baseSpeed;
           this.targetPos.copyFrom(this.initialPos);
         }
 
-        if (distToPlayer < 2.6 && playerObj.hasBall) {
-          if (Math.random() < 0.15) { 
-            this.mesh.position.addInPlace(playerPos.subtract(this.mesh.position).normalize().scale(0.8)); 
+        // [액티브 강력 태클]: 유저가 볼을 소유한 상태에서 사정거리에 들면 즉시 차단
+        if (distToPlayer < 2.9 && playerObj.hasBall) {
+          if (Math.random() < 0.35) { // 틱당 35% 확률로 기습 몸싸움 탈취
+            this.mesh.position.addInPlace(playerPos.subtract(this.mesh.position).normalize().scale(1.0)); 
             onTackleSuccess(this); 
           }
         }
@@ -396,7 +414,7 @@
           this.mesh.position.addInPlace(moveVec.scale(currentMoveSpeed));
           this.mesh.rotation.y = Math.atan2(moveVec.x, moveVec.z);
 
-          const animFactor = currentMoveSpeed === this.dashSpeed ? 0.025 : 0.015;
+          const animFactor = currentMoveSpeed === this.dashSpeed ? 0.03 : 0.018;
           const time = performance.now() * animFactor;
           this.leftLeg.rotation.x = Math.sin(time) * 0.6; this.rightLeg.rotation.x = -Math.sin(time) * 0.6;
         } else {
@@ -408,7 +426,7 @@
     }
 
     // ==========================================
-    // 3. Game 클래스 (물리 상호 충돌 엔진 탑재)
+    // 3. Game 클래스 (엔진 종합 구동부)
     // ==========================================
     class Game {
       constructor(canvas) {
@@ -422,7 +440,7 @@
 
         this.scoreHome = 0; this.scoreAway = 0; 
         
-        this.shootPowerMax = 6.2; 
+        this.shootPowerMax = 6.5; 
         this.shootPowerCurrent = 1.0; 
         this.isChargingShoot = false;
         this.cameraShakeIntensity = 0;
@@ -436,11 +454,12 @@
         this.createBall();
         this.player = new Player(this.scene);
         this.spawnFormationDummies();
+        this.setupMainLoop();
       }
 
       initScene() {
         this.scene.clearColor = new Color3(0.53, 0.81, 0.92);
-        this.camera = new FreeCamera("sideFollowCamera", new Vector3(90, 42, 0), this.scene);
+        this.camera = new FreeCamera("sideFollowCamera", new Vector3(90, 45, 0), this.scene);
         this.camera.setTarget(new Vector3(0, 0, 0)); 
         this.light = new HemisphericLight("light", new Vector3(0, 1, 0), this.scene); this.light.intensity = 0.8;
         const sunLight = new DirectionalLight("sunLight", new Vector3(-1, -2, -0.5), this.scene); sunLight.intensity = 0.9;
@@ -448,8 +467,8 @@
 
       createGKZoneBoxes() {
         const zoneMat = new StandardMaterial("gkZoneMat", this.scene);
-        zoneMat.diffuseColor = new Color3(1, 0.85, 0); 
-        zoneMat.alpha = 0.08; 
+        zoneMat.diffuseColor = new Color3(1, 0.2, 0); 
+        zoneMat.alpha = 0.05; 
 
         this.awayGKBox = MeshBuilder.CreateBox("awayGKBox", { width: PENALTY_BOX_W, height: 0.1, depth: PENALTY_BOX_D }, this.scene);
         this.awayGKBox.position.set(0, 0.05, (this.fieldHeight / 2) - (PENALTY_BOX_D / 2));
@@ -470,11 +489,13 @@
           { role: "FIELD", coords: new Vector3(15, 0, -70) }, { role: "FIELD", coords: new Vector3(45, 0, -65) }, { role: "FIELD", coords: new Vector3(-18, 0, -42) },
           { role: "FIELD", coords: new Vector3(18, 0, -42) }, { role: "FIELD", coords: new Vector3(-40, 0, -18) }, { role: "FIELD", coords: new Vector3(0, 0, -18) }, { role: "FIELD", coords: new Vector3(40, 0, -18) }
         ];
+        // 정교하고 촘촘한 4-2-3-1 대형 배치로 수비 지옥 형성
         const awayPositions = [
           { role: "GK", coords: new Vector3(0, 0, 94) }, 
-          { role: "FIELD", coords: new Vector3(45, 0, 65) }, { role: "FIELD", coords: new Vector3(15, 0, 70) },
-          { role: "FIELD", coords: new Vector3(-15, 0, 70) }, { role: "FIELD", coords: new Vector3(-45, 0, 65) }, { role: "FIELD", coords: new Vector3(22, 0, 42) },
-          { role: "FIELD", coords: new Vector3(-22, 0, 42) }, { role: "FIELD", coords: new Vector3(38, 0, 18) }, { role: "FIELD", coords: new Vector3(0, 0, 22) }, { role: "FIELD", coords: new Vector3(-38, 0, 18) },
+          { role: "FIELD", coords: new Vector3(45, 0, 68) }, { role: "FIELD", coords: new Vector3(15, 0, 72) },
+          { role: "FIELD", coords: new Vector3(-15, 0, 72) }, { role: "FIELD", coords: new Vector3(-45, 0, 68) }, 
+          { role: "FIELD", coords: new Vector3(20, 0, 45) }, { role: "FIELD", coords: new Vector3(-20, 0, 45) }, 
+          { role: "FIELD", coords: new Vector3(35, 0, 20) }, { role: "FIELD", coords: new Vector3(0, 0, 25) }, { role: "FIELD", coords: new Vector3(-35, 0, 20) },
           { role: "FIELD", coords: new Vector3(0, 0, 2) }   
         ];
         homePositions.forEach((p, idx) => { this.dummies.push(new DummyPlayer(`Home_${p.role}_${idx}`, "home", p.role, p.coords, this.scene)); });
@@ -496,14 +517,14 @@
 
         this.camera.position.x = BABYLON.Scalar.Lerp(this.camera.position.x, targetCameraX, 0.07);
         this.camera.position.z = BABYLON.Scalar.Lerp(this.camera.position.z, targetCameraZ, 0.07);
-        this.camera.position.y = BABYLON.Scalar.Lerp(this.camera.position.y, 42, 0.07);
+        this.camera.position.y = BABYLON.Scalar.Lerp(this.camera.position.y, 45, 0.07);
         this.camera.setTarget(new Vector3(playerPos.x, playerPos.y + 2.0, playerPos.z));
       }
 
       createProceduralGrassField() {
         const grassTexture = new DynamicTexture("grassTex", {width: 1024, height: 2048}, this.scene); const ctx = grassTexture.getContext();
-        for (let i = 0; i < 26; i++) { ctx.fillStyle = (i % 2 === 0) ? "#2e7d32" : "#388e3c"; ctx.fillRect(0, i * (2048/26), 1024, (2048/26)); }
-        ctx.strokeStyle = "rgba(255,255,255,0.8)"; ctx.lineWidth = 14; ctx.strokeRect(20, 20, 1024 - 40, 2048 - 40);
+        for (let i = 0; i < 26; i++) { ctx.fillStyle = (i % 2 === 0) ? "#276e2a" : "#2e7d32"; ctx.fillRect(0, i * (2048/26), 1024, (2048/26)); }
+        ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 14; ctx.strokeRect(20, 20, 1024 - 40, 2048 - 40);
         ctx.beginPath(); ctx.moveTo(20, 1024); ctx.lineTo(1024-20, 1024); ctx.stroke();
         ctx.beginPath(); ctx.arc(512, 1024, 160, 0, 2 * Math.PI); ctx.stroke(); grassTexture.update();
         const field = MeshBuilder.CreateGround("soccerField", { width: this.fieldWidth, height: this.fieldHeight }, this.scene);
@@ -536,32 +557,29 @@
         if (isAwayGoal) { this.scoreHome++; document.getElementById("score-home").innerText = this.scoreHome; }
         else { this.scoreAway++; document.getElementById("score-away").innerText = this.scoreAway; }
         const overlay = document.getElementById("goal-overlay"); overlay.style.display = "block";
+        this.cameraShakeIntensity = 1.5;
         setTimeout(() => { this.resetBall(); this.player.resetPosition(); overlay.style.display = "none"; this.isResetting = false; }, 2000);
       }
 
       handleHardPhysicsCollisions() {
         const pPos = this.player.mesh.position;
         
-        // 1. 유저 플레이어와 AI 수비수 간의 충돌 밀어내기
         this.dummies.forEach(dummy => {
           const dPos = dummy.mesh.position; const dist = Vector3.Distance(pPos, dPos); const minDist = PLAYER_RADIUS + PLAYER_RADIUS;
           if (dist < minDist) { pPos.addInPlace(pPos.subtract(dPos).normalize().scale((minDist - dist) * 0.5)); }
         });
 
-        // [핵심 해결 로직: AI 수비수 간 상호 충돌 엔진 연출]
-        // 수비수끼리 루프를 돌며 거리를 검사하고, 겹치려고 하면 반대 방향으로 상호 반발력을 줘 밀어냅니다.
         for (let i = 0; i < this.dummies.length; i++) {
           for (let j = i + 1; j < this.dummies.length; j++) {
             const d1 = this.dummies[i].mesh.position;
             const d2 = this.dummies[j].mesh.position;
             const distBetweenDummies = Vector3.Distance(d1, d2);
-            const safeDistance = 2.2; // 수비진 최소 격차 거리 유지
+            const safeDistance = 2.4; 
 
             if (distBetweenDummies < safeDistance && distBetweenDummies > 0.01) {
               const pushDirection = d1.subtract(d2).normalize();
               const overlapAmount = (safeDistance - distBetweenDummies) * 0.5;
               
-              // 두 수비수를 서로 반대 방향으로 똑같이 튕겨내어 결합을 방지
               d1.addInPlace(pushDirection.scale(overlapAmount));
               d2.addInPlace(pushDirection.scale(-overlapAmount));
             }
@@ -577,7 +595,7 @@
               const reflectionNormal = bPos.subtract(dPos).normalize();
               bPos.addInPlace(reflectionNormal.scale(collisionDist - distToBall)); 
               const speed = this.ballVelocity.length();
-              this.ballVelocity.copyFrom(reflectionNormal.scale(Math.max(speed * 0.78, 0.18))); this.ballVelocity.y = speed * 0.22; 
+              this.ballVelocity.copyFrom(reflectionNormal.scale(Math.max(speed * 0.78, 0.2))); this.ballVelocity.y = speed * 0.25; 
             }
           });
         }
@@ -621,10 +639,7 @@
           if (isOut) { 
             this.ballVelocity.set(0, 0, 0); 
             this.ball.position.set(0, BALL_RADIUS, 0); 
-            this.player.mesh.position.set(0, 0, -5); 
-            this.player.moveDirection.set(0, 0, 1);
-            this.player.mesh.rotation.y = 0;
-            this.player.currentSpeed = this.player.minSpeed;
+            this.player.resetPosition();
           }
         }
       }
@@ -647,94 +662,88 @@
             this.isChargingShoot = true;
             document.getElementById("power-bar-container").style.display = "block";
             if (this.shootPowerCurrent < this.shootPowerMax) {
-              this.shootPowerCurrent += 0.16; 
+              this.shootPowerCurrent += 0.22; // 충전 속도 상향
               document.getElementById("power-bar").style.width = ((this.shootPowerCurrent - 1.0) / (this.shootPowerMax - 1.0)) * 100 + "%";
             }
           } else if (this.isChargingShoot && !this.player.inputMap["d"]) {
             this.player.hasBall = false; this.isChargingShoot = false;
 
             let shootDirection;
-            const ratio = (this.shootPowerCurrent - 1.0) / (this.shootPowerMax - 1.0);
-
             if (this.checkInAwayGKBox()) {
-              const randomCornerX = Math.random() < 0.5 ? -this.goalW/2 + 2.5 : this.goalW/2 - 2.5;
-              const awayGoalTarget = new Vector3(randomCornerX, BALL_RADIUS, this.fieldHeight / 2);
-              shootDirection = awayGoalTarget.subtract(this.ball.position).normalize();
+              const randomCornerX = (Math.random() < 0.5) ? (-this.goalW / 2 + 1.2) : (this.goalW / 2 - 1.2);
+              const targetCorner = new Vector3(randomCornerX, 2.0, this.fieldHeight / 2);
+              shootDirection = targetCorner.subtract(playerPos).normalize();
             } else {
-              shootDirection = this.player.moveDirection.normalize();
+              shootDirection = this.player.moveDirection.clone().normalize();
             }
 
-            this.ballVelocity.x = shootDirection.x * this.shootPowerCurrent;
-            this.ballVelocity.z = shootDirection.z * this.shootPowerCurrent;
+            this.ballVelocity.copyFrom(shootDirection.scale(this.shootPowerCurrent));
+            this.ballVelocity.y = this.shootPowerCurrent * 0.26; 
             
-            if (ratio > 0.85) {
-              this.ballVelocity.y = this.shootPowerCurrent * 0.55; 
-            } else {
-              this.ballVelocity.y = this.shootPowerCurrent * (0.18 + (1 - ratio) * 0.15); 
-            }
-
-            if (ratio > 0.4) {
-              this.cameraShakeIntensity = ratio * 0.45;
-            }
-
             this.shootPowerCurrent = 1.0;
             document.getElementById("power-bar-container").style.display = "none";
           }
-        } 
-        else {
-          if (this.player.inputMap[" "]) { 
+        } else {
+          if (this.player.inputMap[" "]) {
             this.dummies.forEach(dummy => {
               if (dummy.hasBall && Vector3.Distance(playerPos, dummy.mesh.position) < 3.2) {
                 dummy.hasBall = false;
-                this.player.hasBall = true; 
+                this.player.hasBall = true;
+                this.cameraShakeIntensity = 0.4; 
               }
             });
           }
         }
       }
 
-      start() {
+      setupMainLoop() {
         this.engine.runRenderLoop(() => {
-          if (!this.scene) return;
-          
-          const playerObj = this.player;
-
           this.player.update(this.fieldWidth, this.fieldHeight);
-          this.checkCollisionsAndActions();
+          
+          // [실시간 가장 가까운 수비수(1선 압박조) 연산]
+          let closestDummy = null;
+          let minDistance = 99999;
           
           this.dummies.forEach(dummy => {
-            dummy.updateAI(playerObj, this.ball, this.fieldHeight, (tackler) => {
+            if (dummy.team === "away" && dummy.role !== "GK") {
+              const dist = Vector3.Distance(dummy.mesh.position, this.player.mesh.position);
+              if (dist < minDistance) {
+                minDistance = dist;
+                closestDummy = dummy;
+              }
+            }
+          });
+
+          this.dummies.forEach(dummy => {
+            const isClosest = (dummy === closestDummy);
+            dummy.updateAI(this.player, this.ball, this.fieldHeight, isClosest, (actingDummy) => {
+              // AI가 태클에 성공했을 때의 콜백 처리
               if (this.player.hasBall) {
                 this.player.hasBall = false;
-                tackler.hasBall = true; 
-                
-                setTimeout(() => {
-                  if (tackler.hasBall) {
-                    tackler.hasBall = false;
-                    this.ballVelocity.set(BABYLON.Scalar.RandomRange(-0.5, 0.5), 1.0, -2.8); 
-                  }
-                }, 1200); 
+                this.dummies.forEach(d => d.hasBall = false);
+                actingDummy.hasBall = true;
+                this.cameraShakeIntensity = 0.5; // 피태클 시 강한 진동 피드백
               }
             });
           });
 
           this.handleHardPhysicsCollisions();
           this.processBallPhysics();
+          this.checkCollisionsAndActions();
           this.updateCameraFollow();
-          
+
           this.scene.render();
+        });
+
+        window.addEventListener("resize", () => {
+          this.engine.resize();
         });
       }
     }
 
     window.addEventListener("DOMContentLoaded", () => {
       const canvas = document.getElementById("renderCanvas");
-      const game = new Game(canvas);
-      game.start();
-
-      window.addEventListener("resize", () => {
-        game.engine.resize();
-      });
+      new Game(canvas);
     });
   </script>
 </body>
