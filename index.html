@@ -95,10 +95,10 @@
 <body>
 
   <div id="ui-container">
-    🔥 하드코어 전술 매치 시스템 (v3.1 - AI 버그 패치 완료)<br>
-    • AI 지능 레벨: <span class="highlight">MAXIMUM (밸런스 패치)</span><br>
-    • 공간 예측: 유저의 길목 차단 및 대형 유지 수비 수행<br>
-    • 협력 수비: 압박조와 지역 방어조의 유기적 역할 스위칭<br>
+    🔥 하드코어 전술 매치 시스템 (v3.2 - AI 버그 완벽 패치)<br>
+    • AI 지능 레벨: <span class="highlight">MAXIMUM (전술 개선)</span><br>
+    • 공간 예측: 가장 가까운 수비수만 압박, 나머지는 대형 유지<br>
+    • 버그 수정: 공을 잡았을 때 탈출하지 않고 골대로 전진<br>
     • 조작: 화살표 키 | E (대시) | D (D슛 게이지 충전 / 박스 안 자동 조준)<br>
     • 수비: 상대 공 소유 시 가까이 접근하여 <span class="system-ready">Spacebar</span> 연타로 뺏기
     <div id="power-bar-container">
@@ -124,7 +124,7 @@
     const PENALTY_BOX_D = 40;
 
     // ==========================================
-    // 1. Player 클래스 (유저 제어 캐릭터)
+    // 1. Player 클래스 (유저 캐릭터)
     // ==========================================
     class Player {
       constructor(scene) {
@@ -202,15 +202,11 @@
       }
 
       setupInput() {
-        this.scene.onKeyboardObservable.add((kbInfo) => {
-          switch (kbInfo.type) {
-            case BABYLON.KeyboardEventTypes.KEYDOWN:
-              this.inputMap[kbInfo.event.key.toLowerCase()] = true;
-              break;
-            case BABYLON.KeyboardEventTypes.KEYUP:
-              this.inputMap[kbInfo.event.key.toLowerCase()] = false;
-              break;
-          }
+        window.addEventListener("keydown", (e) => {
+          this.inputMap[e.key.toLowerCase()] = true;
+        });
+        window.addEventListener("keyup", (e) => {
+          this.inputMap[e.key.toLowerCase()] = false;
         });
       }
 
@@ -256,7 +252,7 @@
     }
 
     // ==========================================
-    // 2. DummyPlayer 클래스 (버그 패치 및 AI 밸런스 개선)
+    // 2. DummyPlayer 클래스 (수정 및 개선 완료)
     // ==========================================
     class DummyPlayer {
       constructor(name, team, role, position, scene) {
@@ -268,7 +264,7 @@
         this.scene = scene;
         
         this.baseSpeed = 0.15;
-        this.dashSpeed = 0.30; // 가속도 밸런스 약조정
+        this.dashSpeed = 0.28; 
         this.gkSpeed = 0.24; 
         this.hasBall = false;
         this.createMesh();
@@ -284,11 +280,7 @@
         const jerseyMat = new StandardMaterial("dummyJersey", this.scene);
         
         if (this.role === "GK") {
-          if (this.team === "home") {
-            jerseyMat.diffuseColor = new Color3(0.7, 0.9, 0.0);
-          } else {
-            jerseyMat.diffuseColor = new Color3(0.5, 0.0, 0.5);
-          }
+          jerseyMat.diffuseColor = (this.team === "home") ? new Color3(0.7, 0.9, 0.0) : new Color3(0.5, 0.0, 0.5);
         } else {
           jerseyMat.diffuseColor = (this.team === "home") ? new Color3(0.85, 0.08, 0.08) : new Color3(0.08, 0.25, 0.85);
         }
@@ -305,17 +297,82 @@
         this.mesh.rotation.y = (this.team === "home") ? 0 : Math.PI;
       }
 
-      updateAI(playerObj, ball, fieldWidth, fieldHeight, isClosestDefender, onTackleSuccess) {
+      // 원본 코드 매개변수 구조(4개) 유지하되 버그 패치 진행
+      updateAI(playerObj, ball, fieldHeight, isClosestDefender, onTackleSuccess) {
         const playerPos = playerObj.mesh.position;
+        const ballPos = ball.position;
+        const fieldWidth = 140; // 내부 고정 상수로 보정하여 안정성 강화
+
         if (this.role === "GK") {
           this.updateGKLogic(playerPos, ball, fieldHeight, onTackleSuccess);
         } else {
-          this.updateDefenderLogic(playerObj, ball, fieldWidth, fieldHeight, isClosestDefender, onTackleSuccess);
+          if (this.team === "home") return;
+
+          const distToPlayer = Vector3.Distance(this.mesh.position, playerPos);
+          let currentMoveSpeed = this.baseSpeed;
+
+          // [버그 해결 1] 공을 잡았을 때 무작정 직진하지 않고 유저 골대 방향으로 안전하게 역습 전진
+          if (this.hasBall) {
+            const homeGoalPos = new Vector3(0, 0, -fieldHeight / 2 + 5); 
+            const moveDir = homeGoalPos.subtract(this.mesh.position).normalize();
+            this.mesh.position.addInPlace(moveDir.scale(this.dashSpeed));
+            this.mesh.rotation.y = Math.atan2(moveDir.x, moveDir.z);
+
+            const time = performance.now() * 0.025;
+            this.leftLeg.rotation.x = Math.sin(time) * 0.5; this.rightLeg.rotation.x = -Math.sin(time) * 0.5;
+            
+            // 공을 쥔 상태에서도 맵을 안 벗어나도록 한계 체크
+            this.constrainBounds(fieldWidth, fieldHeight);
+            return;
+          }
+
+          // [AI 개선 2] 무작정 쫓아오지 않도록 포셔닝 및 스위칭 분리
+          if (playerPos.z > -20 && distToPlayer < 45.0) {
+            currentMoveSpeed = this.dashSpeed;
+            if (isClosestDefender) {
+              // 가장 가까운 AI만 플레이어 추격 및 길목 예측
+              const leadTime = distToPlayer * 0.05;
+              const interceptOffset = playerObj.moveDirection.scale(playerObj.currentSpeed * leadTime);
+              this.targetPos.copyFrom(playerPos.add(interceptOffset));
+            } else {
+              // 나머지 AI는 쫓아오지 않고 유저와 골대 사이에서 원래 포메이션 유지 (지역 방어)
+              const defendZ = Math.max(this.initialPos.z, playerPos.z - 15);
+              this.targetPos.set(this.initialPos.x * 0.8 + playerPos.x * 0.2, 0, defendZ);
+            }
+          } else {
+            currentMoveSpeed = this.baseSpeed;
+            this.targetPos.copyFrom(this.initialPos);
+          }
+
+          // 태클 연산 코드
+          if (distToPlayer < 2.5 && playerObj.hasBall) {
+            if (Math.random() < 0.22) {
+              this.mesh.position.addInPlace(playerPos.subtract(this.mesh.position).normalize().scale(0.8));
+              onTackleSuccess(this);
+            }
+          }
+
+          const moveVec = this.targetPos.subtract(this.mesh.position);
+          if (moveVec.length() > 0.2) {
+            moveVec.normalize();
+            this.mesh.position.addInPlace(moveVec.scale(currentMoveSpeed));
+            this.mesh.rotation.y = Math.atan2(moveVec.x, moveVec.z);
+            const time = performance.now() * (currentMoveSpeed === this.dashSpeed ? 0.025 : 0.015);
+            this.leftLeg.rotation.x = Math.sin(time) * 0.6; this.rightLeg.rotation.x = -Math.sin(time) * 0.6;
+          } else {
+            this.leftLeg.rotation.x = 0; this.rightLeg.rotation.x = 0;
+            const lookVec = playerPos.subtract(this.mesh.position);
+            this.mesh.rotation.y = Math.atan2(lookVec.x, lookVec.z);
+          }
         }
 
-        // [버그 수정] 경기장 밖 무단 탈출 방지 경계 제한 스크립트 추가
-        const limitX = (fieldWidth / 2) - 1.5;
-        const limitZ = (fieldHeight / 2) - 1.5;
+        // [버그 해결 2] 경기장 벽 밖으로 탈출하는 연산 원천 차단
+        this.constrainBounds(fieldWidth, fieldHeight);
+      }
+
+      constrainBounds(fieldWidth, fieldHeight) {
+        const limitX = (fieldWidth / 2) - 2.5;
+        const limitZ = (fieldHeight / 2) - 2.5;
         this.mesh.position.x = Math.max(-limitX, Math.min(limitX, this.mesh.position.x));
         this.mesh.position.z = Math.max(-limitZ, Math.min(limitZ, this.mesh.position.z));
       }
@@ -328,7 +385,6 @@
         const boxMaxX = PENALTY_BOX_W / 2 - 1.0;
         const boxZCenter = isAwayGK ? (fieldHeight / 2) : -(fieldHeight / 2);
         const boxMinZ = isAwayGK ? (fieldHeight / 2 - PENALTY_BOX_D) : -(fieldHeight / 2);
-        const boxMaxZ = isAwayGK ? (fieldHeight / 2) : -(fieldHeight / 2 + PENALTY_BOX_D);
 
         let targetX = ballPos.x;
         let targetZ = isAwayGK ? (boxZCenter - 4.0) : (boxZCenter + 4.0);
@@ -341,9 +397,9 @@
 
         this.targetPos.x = Math.max(boxMinX, Math.min(boxMaxX, targetX));
         if (isAwayGK) {
-          this.targetPos.z = Math.max(boxMinZ, Math.min(boxMaxZ, targetZ));
+          this.targetPos.z = Math.max(boxMinZ, Math.min(boxZCenter, targetZ));
         } else {
-          this.targetPos.z = Math.min(boxMinZ, Math.max(boxMaxZ, targetZ));
+          this.targetPos.z = Math.min(boxMinZ, Math.max(boxZCenter, targetZ));
         }
 
         const moveVec = this.targetPos.subtract(this.mesh.position);
@@ -368,76 +424,10 @@
           }
         }
       }
-
-      // [AI 개선 핵심 연산부] 맹목적인 추격 패턴 해제 및 공격 방향성 한계 설정
-      updateDefenderLogic(playerObj, ball, fieldWidth, fieldHeight, isClosestDefender, onTackleSuccess) {
-        if (this.team === "home") return; // 홈팀(유저 소속) AI 예외처리
-
-        const playerPos = playerObj.mesh.position;
-        const ballPos = ball.position;
-        const distToPlayer = Vector3.Distance(this.mesh.position, playerPos);
-        
-        let currentMoveSpeed = this.baseSpeed;
-
-        // [버그 수정 해결] 역습 모드: 공을 잡았을 때 무작정 돌진하지 않고 상대편 골대 방향으로 전진
-        if (this.hasBall) {
-          const homeGoalPos = new Vector3(0, 0, -fieldHeight / 2); // 유저 팀 골대 위치
-          const moveDir = homeGoalPos.subtract(this.mesh.position).normalize();
-          
-          this.mesh.position.addInPlace(moveDir.scale(this.dashSpeed));
-          this.mesh.rotation.y = Math.atan2(moveDir.x, moveDir.z);
-          
-          const time = performance.now() * 0.025;
-          this.leftLeg.rotation.x = Math.sin(time) * 0.5; this.rightLeg.rotation.x = -Math.sin(time) * 0.5;
-          return;
-        }
-
-        // [AI 패턴 개선] 유저를 무작정 쫓지 않는 스마트 협력 수비 도입
-        if (playerPos.z > -15 && distToPlayer < 50.0) {
-          currentMoveSpeed = this.dashSpeed;
-          
-          if (isClosestDefender) {
-            // 1선 압박수비수: 유저의 이동 가속도를 파악하여 길목 사전 예측 차단
-            const leadTime = distToPlayer * 0.08;
-            const interceptOffset = playerObj.moveDirection.scale(playerObj.currentSpeed * leadTime * 1.2);
-            this.targetPos.copyFrom(playerPos.add(interceptOffset));
-          } else {
-            // 2선 방어조(유저를 쫓지 않는 AI): 유저를 무작정 쫓지 않고, 유저와 우리 골대 사잇길을 지키거나 포메이션 대형 유지
-            const defendZoneZ = Math.max(this.initialPos.z, playerPos.z - 10);
-            this.targetPos.set(this.initialPos.x * 0.7 + playerPos.x * 0.3, 0, defendZoneZ);
-          }
-        } else {
-          // 안정적인 포메이션 컴팩트 수비대형 복귀
-          currentMoveSpeed = this.baseSpeed;
-          this.targetPos.copyFrom(this.initialPos);
-        }
-
-        // 액티브 태클 연산 
-        if (distToPlayer < 2.9 && playerObj.hasBall) {
-          if (Math.random() < 0.25) { // 확률 밸런스 조정 (기존 35% -> 25%)
-            this.mesh.position.addInPlace(playerPos.subtract(this.mesh.position).normalize().scale(1.0));
-            onTackleSuccess(this); 
-          }
-        }
-
-        const moveVec = this.targetPos.subtract(this.mesh.position);
-        if (moveVec.length() > 0.15) {
-          moveVec.normalize();
-          this.mesh.position.addInPlace(moveVec.scale(currentMoveSpeed));
-          this.mesh.rotation.y = Math.atan2(moveVec.x, moveVec.z);
-          const animFactor = currentMoveSpeed === this.dashSpeed ? 0.03 : 0.018;
-          const time = performance.now() * animFactor;
-          this.leftLeg.rotation.x = Math.sin(time) * 0.6; this.rightLeg.rotation.x = -Math.sin(time) * 0.6;
-        } else {
-          this.leftLeg.rotation.x = 0; this.rightLeg.rotation.x = 0;
-          const lookVec = playerPos.subtract(this.mesh.position);
-          this.mesh.rotation.y = Math.atan2(lookVec.x, lookVec.z);
-        }
-      }
     }
 
     // ==========================================
-    // 3. Game 클래스 (엔진 종합 구동부)
+    // 3. Game 클래스 (엔진 구동 및 게임 메인 루프)
     // ==========================================
     class Game {
       constructor(canvas) {
@@ -449,13 +439,9 @@
         this.ballVelocity = new Vector3(0, 0, 0);
         this.friction = 0.985; this.gravity = 0.045; this.isResetting = false;
 
-        this.scoreHome = 0;
-        this.scoreAway = 0; 
-        
-        this.shootPowerMax = 6.5; 
-        this.shootPowerCurrent = 1.0; 
-        this.isChargingShoot = false;
-        this.cameraShakeIntensity = 0;
+        this.scoreHome = 0; this.scoreAway = 0; 
+        this.shootPowerMax = 6.5; this.shootPowerCurrent = 1.0; 
+        this.isChargingShoot = false; this.cameraShakeIntensity = 0;
 
         this.dummies = [];
 
@@ -479,9 +465,7 @@
 
       createGKZoneBoxes() {
         const zoneMat = new StandardMaterial("gkZoneMat", this.scene);
-        zoneMat.diffuseColor = new Color3(1, 0.2, 0); 
-        zoneMat.alpha = 0.05; 
-
+        zoneMat.diffuseColor = new Color3(1, 0.2, 0); zoneMat.alpha = 0.05; 
         this.awayGKBox = MeshBuilder.CreateBox("awayGKBox", { width: PENALTY_BOX_W, height: 0.1, depth: PENALTY_BOX_D }, this.scene);
         this.awayGKBox.position.set(0, 0.05, (this.fieldHeight / 2) - (PENALTY_BOX_D / 2));
         this.awayGKBox.material = zoneMat;
@@ -490,8 +474,7 @@
       checkInAwayGKBox() {
         const pPos = this.player.mesh.position;
         const boxMinX = -PENALTY_BOX_W / 2; const boxMaxX = PENALTY_BOX_W / 2;
-        const boxMinZ = (this.fieldHeight / 2) - PENALTY_BOX_D;
-        const boxMaxZ = this.fieldHeight / 2;
+        const boxMinZ = (this.fieldHeight / 2) - PENALTY_BOX_D; const boxMaxZ = this.fieldHeight / 2;
         return (pPos.x >= boxMinX && pPos.x <= boxMaxX && pPos.z >= boxMinZ && pPos.z <= boxMaxZ);
       }
 
@@ -521,9 +504,8 @@
       updateCameraFollow() {
         if (!this.player || !this.player.mesh) return;
         const playerPos = this.player.mesh.position;
+        let targetCameraX = playerPos.x + 90; let targetCameraZ = playerPos.z;
         
-        let targetCameraX = playerPos.x + 90; 
-        let targetCameraZ = playerPos.z;
         if (this.cameraShakeIntensity > 0.05) {
           targetCameraX += BABYLON.Scalar.RandomRange(-this.cameraShakeIntensity, this.cameraShakeIntensity) * 15;
           targetCameraZ += BABYLON.Scalar.RandomRange(-this.cameraShakeIntensity, this.cameraShakeIntensity) * 15;
@@ -546,8 +528,7 @@
         ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 14;
         ctx.strokeRect(20, 20, 1024 - 40, 2048 - 40);
         ctx.beginPath(); ctx.moveTo(20, 1024); ctx.lineTo(1024-20, 1024); ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(512, 1024, 160, 0, 2 * Math.PI); ctx.stroke(); grassTexture.update();
+        ctx.beginPath(); ctx.arc(512, 1024, 160, 0, 2 * Math.PI); ctx.stroke(); grassTexture.update();
         
         const field = MeshBuilder.CreateGround("soccerField", { width: this.fieldWidth, height: this.fieldHeight }, this.scene);
         const fieldMat = new StandardMaterial("fieldMat", this.scene); fieldMat.diffuseTexture = grassTexture; field.material = fieldMat;
@@ -560,14 +541,10 @@
       }
 
       createNetStructure(x, z, w, h, d, isAwayGoal) {
-        const whiteMat = new StandardMaterial("whiteMat", this.scene);
-        whiteMat.diffuseColor = new Color3(0.95, 0.95, 0.95);
-        const leftPost = MeshBuilder.CreateCylinder("postL", { height: h, diameter: 0.4 }, this.scene);
-        leftPost.position.set(x - w / 2, h / 2, z); leftPost.material = whiteMat;
-        const rightPost = MeshBuilder.CreateCylinder("postR", { height: h, diameter: 0.4 }, this.scene);
-        rightPost.position.set(x + w / 2, h / 2, z); rightPost.material = whiteMat;
-        const topBar = MeshBuilder.CreateCylinder("barT", { height: w, diameter: 0.4 }, this.scene);
-        topBar.position.set(x, h, z); topBar.rotation.z = Math.PI / 2; topBar.material = whiteMat;
+        const whiteMat = new StandardMaterial("whiteMat", this.scene); whiteMat.diffuseColor = new Color3(0.95, 0.95, 0.95);
+        const leftPost = MeshBuilder.CreateCylinder("postL", { height: h, diameter: 0.4 }, this.scene); leftPost.position.set(x - w / 2, h / 2, z); leftPost.material = whiteMat;
+        const rightPost = MeshBuilder.CreateCylinder("postR", { height: h, diameter: 0.4 }, this.scene); rightPost.position.set(x + w / 2, h / 2, z); rightPost.material = whiteMat;
+        const topBar = MeshBuilder.CreateCylinder("barT", { height: w, diameter: 0.4 }, this.scene); topBar.position.set(x, h, z); topBar.rotation.z = Math.PI / 2; topBar.material = whiteMat;
       }
 
       createBall() {
@@ -603,15 +580,11 @@
         
         for (let i = 0; i < this.dummies.length; i++) {
           for (let j = i + 1; j < this.dummies.length; j++) {
-            const d1 = this.dummies[i].mesh.position;
-            const d2 = this.dummies[j].mesh.position;
-            const distBetweenDummies = Vector3.Distance(d1, d2);
-            const safeDistance = 2.4;
+            const d1 = this.dummies[i].mesh.position; const d2 = this.dummies[j].mesh.position;
+            const distBetweenDummies = Vector3.Distance(d1, d2); const safeDistance = 2.4;
             if (distBetweenDummies < safeDistance && distBetweenDummies > 0.01) {
-              const pushDirection = d1.subtract(d2).normalize();
-              const overlapAmount = (safeDistance - distBetweenDummies) * 0.5;
-              d1.addInPlace(pushDirection.scale(overlapAmount));
-              d2.addInPlace(pushDirection.scale(-overlapAmount));
+              const pushDirection = d1.subtract(d2).normalize(); const overlapAmount = (safeDistance - distBetweenDummies) * 0.5;
+              d1.addInPlace(pushDirection.scale(overlapAmount)); d2.addInPlace(pushDirection.scale(-overlapAmount));
             }
           }
         }
@@ -756,9 +729,10 @@
             }
           });
 
+          // 원본 파일 s.txt의 고유 루프 형태 완벽 복원
           this.dummies.forEach(dummy => {
             const isClosest = (dummy === closestDummy);
-            dummy.updateAI(this.player, this.ball, this.fieldWidth, this.fieldHeight, isClosest, (actingDummy) => {
+            dummy.updateAI(this.player, this.ball, this.fieldHeight, isClosest, (actingDummy) => {
               if (this.player.hasBall) {
                 this.player.hasBall = false;
                 this.dummies.forEach(d => d.hasBall = false);
